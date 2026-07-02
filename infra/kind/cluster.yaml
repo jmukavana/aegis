@@ -1,0 +1,10 @@
+# Local Kubernetes cluster for Phase 0 experimentation.
+#   kind create cluster --name aegis --config infra/kind/cluster.yaml
+# Phase 0 needs no cluster to run the API; this exists so the k8s event watcher (Phase 1)
+# has somewhere to point.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: aegis
+nodes:
+  - role: control-plane
+  - role: worker

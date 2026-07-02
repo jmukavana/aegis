@@ -1,0 +1,91 @@
+{
+  "realm": "aegis",
+  "enabled": true,
+  "sslRequired": "none",
+  "roles": {
+    "realm": [
+      { "name": "remediation:plan", "description": "Draft a remediation plan / run its dry-run" },
+      { "name": "action:execute:local", "description": "Approve/execute remediations in local" },
+      { "name": "action:execute:local:irreversible", "description": "Approve/execute irreversible remediations in local" },
+      { "name": "action:execute:staging", "description": "Approve/execute remediations in staging" },
+      { "name": "action:execute:staging:irreversible", "description": "Approve/execute irreversible remediations in staging" }
+    ]
+  },
+  "users": [
+    {
+      "username": "planner-demo",
+      "enabled": true,
+      "firstName": "Planner",
+      "lastName": "Demo",
+      "email": "planner-demo@aegis.local",
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        { "type": "password", "value": "planner-demo", "temporary": false }
+      ],
+      "realmRoles": ["remediation:plan"]
+    },
+    {
+      "username": "approver-demo",
+      "enabled": true,
+      "firstName": "Approver",
+      "lastName": "Demo",
+      "email": "approver-demo@aegis.local",
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        { "type": "password", "value": "approver-demo", "temporary": false }
+      ],
+      "realmRoles": [
+        "action:execute:local",
+        "action:execute:local:irreversible",
+        "action:execute:staging",
+        "action:execute:staging:irreversible"
+      ]
+    },
+    {
+      "username": "operator-demo",
+      "enabled": true,
+      "firstName": "Operator",
+      "lastName": "Demo",
+      "email": "operator-demo@aegis.local",
+      "emailVerified": true,
+      "requiredActions": [],
+      "credentials": [
+        { "type": "password", "value": "operator-demo", "temporary": false }
+      ],
+      "realmRoles": [
+        "remediation:plan",
+        "action:execute:local",
+        "action:execute:local:irreversible",
+        "action:execute:staging",
+        "action:execute:staging:irreversible"
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "aegis-api",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "defaultClientScopes": ["basic", "roles", "profile", "email"],
+      "protocolMappers": [
+        {
+          "name": "aegis-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "aegis-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ]
+}

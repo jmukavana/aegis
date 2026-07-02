@@ -1,0 +1,115 @@
+# Phase 0 foundation stack. Ports are offset (5xxx / 15432) so this can run alongside the
+# separate `Observability` project without clashing.
+services:
+  postgres:
+    # pgvector-enabled Postgres 16 (Phase 2 RAG needs the `vector` extension).
+    image: pgvector/pgvector:pg16
+    container_name: aegis-postgres
+    environment:
+      POSTGRES_DB: aegis
+      POSTGRES_USER: aegis
+      POSTGRES_PASSWORD: aegis
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aegis -d aegis"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "15432:5432"
+    networks:
+      - aegis
+
+  keycloak:
+    # Real AuthN/Z for the guarded remediation endpoints (Phase 3b decision 3 / PHASE3_DESIGN.md
+    # §7). Realm "aegis" is auto-provisioned from configs/keycloak/realm-export.json on first
+    # boot — dev-only fixture (plaintext demo passwords, sslRequired: none), mirroring the
+    # sibling Observability project's Keycloak fixture. No persistent volume: recreating this
+    # container wipes and re-imports the realm from scratch.
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: aegis-keycloak
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    volumes:
+      - ./configs/keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    ports:
+      - "5080:8080"
+    networks:
+      - aegis
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.116.1
+    container_name: aegis-otel-collector
+    command: ["--config=/etc/otelcol/otelcol.yml"]
+    volumes:
+      - ./configs/otelcol/otelcol.yml:/etc/otelcol/otelcol.yml:ro
+    ports:
+      - "5317:4317"
+      - "5318:4318"
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+    networks:
+      - aegis
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: aegis-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --web.enable-remote-write-receiver
+    volumes:
+      - ./configs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "5090:9090"
+    networks:
+      - aegis
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    container_name: aegis-tempo
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    volumes:
+      - ./configs/tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+    ports:
+      - "5200:3200"
+    networks:
+      - aegis
+
+  loki:
+    image: grafana/loki:3.3.2
+    container_name: aegis-loki
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./configs/loki/loki.yml:/etc/loki/loki.yml:ro
+    ports:
+      - "5100:3100"
+    networks:
+      - aegis
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: aegis-grafana
+    volumes:
+      - ./configs/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "5000:3000"
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+    networks:
+      - aegis
+
+networks:
+  aegis:
+    name: aegis
+
+volumes:
+  postgres-data:
+  grafana-data:
