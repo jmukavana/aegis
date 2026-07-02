@@ -1,0 +1,81 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Type-check (mypy)
+        run: uv run mypy src
+
+      - name: Test (pytest)
+        run: uv run pytest -q
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # required for keyless Workload Identity Federation auth to GCP
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        name: Authenticate to GCP (Workload Identity Federation — no stored key)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ vars.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Build and push image
+        env:
+          IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.ARTIFACT_REPO }}/aegis-api:${{ github.sha }}
+        run: |
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Deploy to Cloud Run
+        env:
+          CONNECTION_NAME: ${{ vars.GCP_PROJECT_ID }}:${{ vars.GCP_REGION }}:aegis-db
+        run: |
+          DATABASE_URL="postgresql+asyncpg://aegis:${{ secrets.DB_PASSWORD }}@/aegis?host=/cloudsql/$CONNECTION_NAME"
+          gcloud run deploy ${{ vars.CLOUD_RUN_SERVICE }} \
+            --image "$IMAGE" \
+            --project ${{ vars.GCP_PROJECT_ID }} \
+            --region ${{ vars.GCP_REGION }} \
+            --allow-unauthenticated \
+            --service-account "${{ vars.RUNTIME_SERVICE_ACCOUNT }}" \
+            --add-cloudsql-instances "$CONNECTION_NAME" \
+            --set-env-vars "DATABASE_URL=${DATABASE_URL},LLM_PROVIDER=vertex,VERTEX_PROJECT=${{ vars.GCP_PROJECT_ID }},SERVICE_NAME=aegis-api" \
+            --min-instances=0 --max-instances=2 --memory=512Mi --cpu=1 \
+            --timeout=300
