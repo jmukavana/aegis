@@ -164,6 +164,34 @@ Config: `OIDC_ISSUER` (default `http://localhost:5080/realms/aegis`), `OIDC_AUDI
 (RBAC checks, audit) — both produce the same `Identity(subject, permissions)` shape consumed
 by `PlanRemediation`/`ApproveRemediation`/`ExecuteRemediation`.
 
+### CI/CD and deployment
+
+Source lives at `github.com/jmukavana/aegis` (private). `.github/workflows/ci-cd.yml`:
+- **`test`** (every push/PR): `uv sync` → `ruff check` → `mypy src` → `pytest`.
+- **`deploy`** (push to `main` only, after `test` passes): builds the `Dockerfile` image, pushes
+  it to Artifact Registry, and `gcloud run deploy`s it to Cloud Run in GCP project
+  `aegis-501206` — the same project used for the Phase 3a/4 GKE/Vertex live drives earlier.
+  Auth is **Workload Identity Federation** (`google-github-actions/auth`) — the runner
+  authenticates as `aegis-deployer@aegis-501206.iam.gserviceaccount.com` via a short-lived
+  token exchanged for its GitHub OIDC identity; no service-account key is stored as a secret.
+  The pool/provider is attribute-conditioned to `assertion.repository=='jmukavana/aegis'`, so
+  only this repo can impersonate the deployer.
+- The deployed service runs as its own minimal-privilege runtime identity
+  (`aegis-runtime@aegis-501206.iam.gserviceaccount.com`, `roles/aiplatform.user` +
+  `roles/cloudsql.client` only — no Kubernetes/actuation access from Cloud Run), backed by a
+  small Cloud SQL Postgres instance (`aegis-db`, `db-f1-micro`) reached over the Cloud SQL Unix
+  socket (`--add-cloudsql-instances`). `LLM_PROVIDER=vertex` — Vertex AI Llama MaaS "just works"
+  in this environment via ADC, no Ollama container needed. `ENABLE_INCIDENT_MEMORY=false` in
+  this deployment (Phase 2 RAG needs an embedding model; no Ollama is reachable from Cloud
+  Run — would need a hosted embedding endpoint to re-enable). GitHub repo vars: `GCP_PROJECT_ID`,
+  `GCP_REGION`, `ARTIFACT_REPO`, `CLOUD_RUN_SERVICE`, `WIF_PROVIDER`, `WIF_SERVICE_ACCOUNT`,
+  `RUNTIME_SERVICE_ACCOUNT`; one secret, `DB_PASSWORD`.
+- Ingress is public/unauthenticated (`--allow-unauthenticated`) — the guarded remediation
+  write-paths (`/remediations/*`) still enforce `Identity`/RBAC internally regardless, and
+  `ACTUATION_ENABLED`/`AUTO_EXECUTE_ENABLED` are unset (default off) in this deployment, so no
+  cluster is reachable or mutable from it. This is a demo/portfolio deployment, not a production
+  on-call system — treat it accordingly (e.g. the Cloud SQL instance has no backups enabled).
+
 ### Phase 2 LLM (Ollama)
 
 `POST /incidents/{id}/explain` requires a local Ollama reachable at `OLLAMA_URL`:
