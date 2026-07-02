@@ -76,6 +76,6 @@ jobs:
             --allow-unauthenticated \
             --service-account "${{ vars.RUNTIME_SERVICE_ACCOUNT }}" \
             --add-cloudsql-instances "$CONNECTION_NAME" \
-            --set-env-vars "DATABASE_URL=${DATABASE_URL},LLM_PROVIDER=vertex,VERTEX_PROJECT=${{ vars.GCP_PROJECT_ID }},SERVICE_NAME=aegis-api" \
+            --set-env-vars "DATABASE_URL=${DATABASE_URL},LLM_PROVIDER=vertex,VERTEX_PROJECT=${{ vars.GCP_PROJECT_ID }},SERVICE_NAME=aegis-api,ENABLE_INCIDENT_MEMORY=false" \
             --min-instances=0 --max-instances=2 --memory=512Mi --cpu=1 \
             --timeout=300
